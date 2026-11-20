@@ -8,7 +8,7 @@
 <style>
 /* ---------- design values ---------- */
 :root {
-  --bg: #F2F4F6; --panel: #FFFFFF; --border: #D3D9DF; --border2: #B7C0C9; --text: #18212B; --text2: #6B7B8B; --muted: #7F8A96;
+  --bg: #F2F4F6; --panel: #FFFFFF; --border: #D3D9DF; --border2: #B7C0C9; --text: #18212B; --text2: #7B8A9A; --muted: #929BA6;
   /* panels and tables: a 1 px dark blue outer border, inner rules 1 px in a dark blue 35 % lighter */
   --frame: #1B365D; --rule: #6B7C96; --rule2: #1B365D;
   --accent: #1B365D; --accent-bg: #E8EEF6; --accent-bg2: #F1F4F8;
@@ -2071,9 +2071,8 @@ const TR = (function () {
 const CH = (function () {
   const C = {
     v20: '#2E6E78', prop: '#A64B2A', uv: '#6B7785', cond: '#8C96A0', ph: '#4F5B66', beam: '#5E4B7C', irf: '#8C96A0',
-    // dark blue structure, every line 1 px: the frame and axes in the accent, the grid and span boundaries (phases,
-    // fractions) in a dark blue 35 % lighter; secondary text 35 % lighter than the original #4F5B67
-    grid: '#6B7C96', frame: '#1B365D', axis: '#1B365D', text: '#18212B', text2: '#6B7B8B', span: '#6B7C96', frac: '#B8C0C8',
+    // chart colours
+    grid: '#6B7C96', frame: '#1B365D', axis: '#1B365D', text: '#18212B', text2: '#7B8A9A', span: '#6B7C96', frac: '#B8C0C8',
     accent: '#1B365D', ok: '#2F7D4F', warn: '#B7791F', fault: '#B42318', diff: '#5B6670', decay: '#6B5B3E'
   };
   const FONT = '13px Arial, "Liberation Sans", sans-serif', FONT_S = '12px Arial, "Liberation Sans", sans-serif';
@@ -3995,7 +3994,7 @@ const UI = (function () {
   // The AKTA run TRIFLE watches comes from the UNICORN export, not from Setup.
   // In the mock-up a demo control picks which simulated AKTA run is used.
   const AKTA_RUNS = { 'protA|import': 'Protein A platform', 'free|import': 'Free run', 'protA|manual': 'Manual event marks', 'protA|standalone': 'No AKTA data' };
-  // AAV is out of scope for GSK downstream for now: offered in the Engineer view only
+  // AAV is out of scope for pharma downstream for now: offered in the Engineer view only
   if (window.STAGE2) AKTA_RUNS['aav|import'] = 'AAV capture (Engineer view)';
   window.AKTA_RUNS = AKTA_RUNS;
   window.aktaRunKey = () => { const k = S.setup.template + '|' + S.setup.source; return AKTA_RUNS[k] ? k : 'protA|import'; };
@@ -5663,7 +5662,7 @@ const ENG = (function () {
   function build() {
     $('#scr-testing').innerHTML = '<div class="scr-h"><h1>About this mock-up</h1></div><div class="stack" style="max-width:1040px">' +
       '<p class="muted" style="margin:0">Every number comes from a seeded simulation. The v2.0 calculations run for real on that data.</p>' +
-      '<div class="panel"><div class="ph"><h3>What this mock-up is testing</h3></div><div class="pb flush"><p class="muted">Evaluation objectives for a future GSK assessment. These are not results.</p><div class="tbl-wrap"><table class="tbl"><thead><tr><th class="nosort">Objective</th><th class="nosort">Feature</th><th class="nosort">We can then assess</th></tr></thead><tbody>' + ROWS.map(r => '<tr><td class="wrap">' + esc(r[0]) + '</td><td class="wrap">' + esc(typeof r[1] === 'function' ? r[1]() : r[1]) + '</td><td class="wrap">' + esc(r[2]) + '</td></tr>').join('') + '</tbody></table></div></div></div>' +
+      '<div class="panel"><div class="ph"><h3>What this mock-up is testing</h3></div><div class="pb flush"><p class="muted">Evaluation objectives for a future pharma assessment. These are not results.</p><div class="tbl-wrap"><table class="tbl"><thead><tr><th class="nosort">Objective</th><th class="nosort">Feature</th><th class="nosort">We can then assess</th></tr></thead><tbody>' + ROWS.map(r => '<tr><td class="wrap">' + esc(r[0]) + '</td><td class="wrap">' + esc(typeof r[1] === 'function' ? r[1]() : r[1]) + '</td><td class="wrap">' + esc(r[2]) + '</td></tr>').join('') + '</tbody></table></div></div></div>' +
       (window.INTEGRATIONS_HTML ? window.INTEGRATIONS_HTML() : '') + '</div>';
   }
   UI.register('testing', { show() { build(); } });
@@ -5709,7 +5708,7 @@ const Q = (function () {
   function runTimeOf(e) { return e.t / 60; }
   // Deterministic local engine. Draws only on the glossary, procedures, run state and logs, and the evidence rules.
   // Replacing answerQuestion with a hosted language model is a future integration: it would need defined
-  // data access, permissions, provenance of every answer, and GSK approval.
+  // data access, permissions, provenance of every answer, and pharma approval.
   function answerQuestion(text, context) {
     const q = text.toLowerCase().trim(), R = context.run;
     for (const fn of extra) { const r = fn(q, context); if (r) return r; }
