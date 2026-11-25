@@ -8,9 +8,9 @@
 <style>
 /* ---------- design values ---------- */
 :root {
-  --bg: #F2F4F6; --panel: #FFFFFF; --border: #D3D9DF; --border2: #B7C0C9; --text: #18212B; --text2: #7B8A9A; --muted: #929BA6;
+  --bg: #F2F4F6; --panel: #FFFFFF; --border: #D3D9DF; --border2: #B7C0C9; --text: #18212B; --text2: #8B98A6; --muted: #A3ABB4;
   /* panels and tables: a 1 px dark blue outer border, inner rules 1 px in a dark blue 35 % lighter */
-  --frame: #1B365D; --rule: #6B7C96; --rule2: #1B365D;
+  --frame: rgba(27,54,93,0.95); --rule: rgba(107,124,150,0.95); --rule2: rgba(27,54,93,0.95);
   --accent: #1B365D; --accent-bg: #E8EEF6; --accent-bg2: #F1F4F8;
   --ok: #2F7D4F; --warn: #B7791F; --fault: #B42318;
   --band1: #EEF0F2; --band2: #F7F8F9; --track: #EBEEF1; --hover: #F3F5F7;
@@ -2072,7 +2072,7 @@ const CH = (function () {
   const C = {
     v20: '#2E6E78', prop: '#A64B2A', uv: '#6B7785', cond: '#8C96A0', ph: '#4F5B66', beam: '#5E4B7C', irf: '#8C96A0',
     // chart colours
-    grid: '#6B7C96', frame: '#1B365D', axis: '#1B365D', text: '#18212B', text2: '#7B8A9A', span: '#6B7C96', frac: '#B8C0C8',
+    grid: 'rgba(107,124,150,0.95)', frame: 'rgba(27,54,93,0.95)', axis: 'rgba(27,54,93,0.95)', text: '#18212B', text2: '#8B98A6', span: 'rgba(107,124,150,0.95)', frac: '#B8C0C8',
     accent: '#1B365D', ok: '#2F7D4F', warn: '#B7791F', fault: '#B42318', diff: '#5B6670', decay: '#6B5B3E'
   };
   const FONT = '13px Arial, "Liberation Sans", sans-serif', FONT_S = '12px Arial, "Liberation Sans", sans-serif';
@@ -3121,7 +3121,7 @@ const M = (function () {
       const c = this.cond('P2', slope > th.p2SlopePct, i, () => {
         const x0 = R.acq.u[dq[0]], fr = this.fracsIn(x0, u);
         const p = this.card({ rule: 'P2', phaseIdx: ph, title: 'Fluorescence rising after the load plateau', obs: '', x0, x1: u, fractions: fr, maxSlope: slope, plateau: this.plateau.level });
-        this.card({ rule: 'H1', phaseIdx: ph, linkedTo: p.id, title: 'Possible onset of mAb breakthrough', obs: 'Total fluorescence cannot separate mAb from HCP; the monomer component of the lifetime analysis can. Check it over the same interval.', x0, x1: u, fractions: fr, features: [{ name: 'Lifetime analysis', label: 'P' }], confirm: 'Protein A HPLC on ' + (fr.length ? rangeIds(fr) : 'the linked flowthrough fractions') + '.' });
+        this.card({ rule: 'H1', phaseIdx: ph, linkedTo: p.id, title: 'Possible onset of mAb breakthrough', obs: 'Total fluorescence cannot separate mAb from HCP; the lifetime analysis separates components by lifetime. Check them over the same interval.', x0, x1: u, fractions: fr, features: [{ name: 'Lifetime analysis', label: 'P' }], confirm: 'Protein A HPLC on ' + (fr.length ? rangeIds(fr) : 'the linked flowthrough fractions') + '.' });
         return p;
       });
       if (c) { if (slope > c.maxSlope) c.maxSlope = slope; c.x1 = u; c.fractions = this.fracsIn(c.x0, c.x1); c.obs = 'Fluorescence slope ' + c.maxSlope.toFixed(1) + ' % per CV over the last 1 CV of the load (' + fmt.ml(c.x0) + ' to ' + fmt.ml(c.x1) + ' mL), after a plateau at ' + fmt.sig3(c.plateau) + ' V·ns. Limit ' + th.p2SlopePct + ' % per CV.'; const h = this.cards.find(k => k.linkedTo === c.id); if (h) { h.fractions = c.fractions; h.x1 = c.x1; h.confirm = 'Protein A HPLC on ' + rangeIds(c.fractions) + '.'; } }
@@ -3614,10 +3614,26 @@ const LTM = (function () {
     if (!lt.fit) return lt.job ? 'fitting' : 'waiting';
     return lt.fit.final ? 'final' : (lt.job && lt.job.final ? 'finalising' : 'live');
   }
+  // peak labels
+  function labels(R) {
+    const lt = R && R.lt; if (!lt || !lt.fit) return null;
+    const key = lt.gen * 1e7 + lt.n; if (lt.lbl && lt.lbl.key === key) return lt.lbl;
+    const n = lt.n, ph = R.acq.phase, el = R.tpl.fractions.elPhase || 'el', elIdx = R.ph.list.findIndex(p => p.key === el), ks = [];
+    for (let k = 0; k < lt.fit.taus.length; k++) {
+      const m = lt.assign[k]; if (m === lt.sc) continue; const y = m >= 0 ? lt.show[m] : lt.otherShow; if (!y) continue;
+      let sum = 0, se = 0; for (let i = 0; i < n; i++) { const v = y[i]; if (v > 0) { sum += v; if (ph[i] === elIdx) se += v; } }
+      ks.push({ k, sum, se });
+    }
+    const main = ks.filter(q => q.se > 0).sort((a, b) => b.se - a.se)[0], rest = ks.filter(q => q !== main).sort((a, b) => b.sum - a.sum), byK = {};
+    if (main) byK[main.k] = { short: 'Main peak', rank: 0 };
+    rest.forEach((q, j) => { byK[q.k] = { short: 'Peak ' + (j + 1), rank: j + 1 }; });
+    return (lt.lbl = { key, byK, mainK: main ? main.k : -1 });
+  }
   // Components with their names, colours and lifetimes, in lifetime order
   function components(R) {
     const lt = R && R.lt; if (!lt || !lt.fit) return [];
-    return lt.fit.taus.map((t, k) => { const m = lt.assign[k], sp = m >= 0 ? lt.lib[m] : null; return { k, m, key: sp ? sp.key : 'other', name: sp ? sp.name : 'Unassigned component', short: sp ? sp.short : 'Unassigned', tau: t, se: lt.fit.se[k], exp: sp ? sp.exp : NaN, color: COLORS[sp ? sp.key : 'other'], product: !!(sp && sp.product) }; });
+    const lb = !S.engineer && labels(R);
+    return lt.fit.taus.map((t, k) => { const m = lt.assign[k], sp = m >= 0 ? lt.lib[m] : null, nm = lb && lb.byK[k]; return { k, m, key: sp ? sp.key : 'other', name: nm ? nm.short : sp ? sp.name : 'Unassigned component', short: nm ? nm.short : sp ? sp.short : 'Unassigned', rank: nm ? nm.rank : 99, tau: t, se: lt.fit.se[k], exp: sp ? sp.exp : NaN, color: COLORS[sp ? sp.key : 'other'], product: lb ? k === lb.mainK : !!(sp && sp.product) }; });
   }
   // Species amplitudes at block i (V·ns), for the species the analysis has found
   function ampsAt(R, i) {
@@ -3650,7 +3666,7 @@ const LTM = (function () {
   // Detected species regions (peaks, each with its apex) and co-elution stretches, from the displayed amplitudes
   function features(R) {
     const lt = R && R.lt; if (!lt || !lt.fit) return { peaks: [], coel: [] };
-    const key = lt.gen * 1e7 + lt.n; if (lt.feat && lt.feat.key === key) return lt.feat;
+    const key = lt.gen * 1e7 + lt.n; if (lt.feat && lt.feat.key === key) return named(R, lt.feat);
     const n = lt.n, lib = lt.lib, ms = lib.map((q, m) => m).filter(m => m !== lt.sc && lt.assign.includes(m)), tot = new Float64Array(n);
     for (let i = 0; i < n; i++) { let t = 0; for (const m of ms) { const v = lt.show[m][i]; if (v > 0) t += v; } tot[i] = t; }
     const runs = (ok, gap) => { const out = []; let a = -1, last = -1e9; for (let i = 0; i < n; i++) if (ok(i)) { if (a < 0 || i - last > gap) { if (a >= 0) out.push([a, last + 1]); a = i; } last = i; } if (a >= 0) out.push([a, last + 1]); return out; };
@@ -3675,12 +3691,20 @@ const LTM = (function () {
         coel.push({ a, b, i0, i1, minor, lo, hi, label: lib[a].short + ' + ' + lib[b].short, minorShort: lib[minor].short });
       }
     }
-    return (lt.feat = { key, peaks, coel, tot });
+    lt.feat = { key, peaks, coel, tot };
+    return named(R, lt.feat);
+  }
+  // scientist names
+  function named(R, f) {
+    const lt = R.lt, lb = !S.engineer && labels(R); if (!lb) return f;
+    const nm = m => { const q = lb.byK[lt.assign.indexOf(m)]; return q ? q : { short: lt.lib[m].short, rank: 99 }; };
+    return { key: f.key, tot: f.tot, peaks: f.peaks.map(p => ({ ...p, short: nm(p.m).short, name: nm(p.m).short })),
+      coel: f.coel.map(c => { const [x, y] = [c.a, c.b].sort((p, q) => nm(p).rank - nm(q).rank); return { ...c, label: nm(x).short + ' + ' + nm(y).short, minorShort: nm(c.minor).short }; }) };
   }
   // Composition of every fraction (Fraction review, Record exports)
   M.fracHooks.push((st, R, i0, i1) => { st.lt = composition(R, i0, i1); });
 
-  return { H, PER, COLORS, BUFFER, DET, state, components, ampsAt, composition, decayAt, meanDecay, features };
+  return { H, PER, COLORS, BUFFER, DET, state, labels, components, ampsAt, composition, decayAt, meanDecay, features };
 })();
 
 /* =====================================================================
@@ -4293,7 +4317,7 @@ const RC = (function () {
   }
   function hatches() { const r = R(), al = M.alignmentState(); if (!r || al.detector !== 'Uncertain') return []; const d = xDomain(); return [{ x0: d[0], x1: d[1] }]; }
   function intervals() {
-    const r = R(); if (!r) return [];
+    const r = R(); if (!r || !S.engineer) return [];
     return r.rules.cards.filter(c => c.rule === 'I6' || (c.rule === 'I1' && c.x1 > c.x0)).map(c => ({ x0: toX(c.x0), x1: toX(c.x1), label: c.rule === 'I6' ? 'I6 laser change' : 'I1 warm-up', color: C.warn }))
       .concat(api.coelution && S.engineer ? api.coelution() : []);
   }
@@ -4997,7 +5021,7 @@ const REC = (function () {
   function showUv() { return S.engineer || RC.view.akta; }
   function resultsHead(showAssign, showLt) {
     const eng = S.engineer;
-    return [['Fraction'], ['Phase'], ['Volume', 'mL']].concat(showUv() ? [['UV 280 mean / max', 'mAU']] : [], [[eng ? 'Fluor. mean / max' : 'Fluor. mean', 'V·ns']], showLt ? [['Species', '% of fluorescence']] : [], showAssign ? [['Assignment']] : [], eng ? [['Cards']] : []);
+    return [['Fraction'], ['Phase'], ['Volume', 'mL']].concat(showUv() ? [['UV 280 mean / max', 'mAU']] : [], [[eng ? 'Fluor. mean / max' : 'Fluor. mean', 'V·ns']], showLt ? [[S.engineer ? 'Species' : 'Peaks', '% of fluorescence']] : [], showAssign ? [['Assignment']] : [], eng ? [['Cards']] : []);
   }
   // lifetime analysis: components with their names, and a fraction's leading species
   function ltComps(R) { return LTM.components(R).map(c => c.tau.toFixed(2) + ' ns (' + (c.m >= 0 ? c.short : 'unassigned') + ')').join(', '); }
@@ -5018,9 +5042,9 @@ const REC = (function () {
       const st = M.fractionStats(R), showAssign = st.some(f => f.assign === 'Uncertain'), showLt = !!(R.lt && R.lt.fit), lst = LTM.state(R);
       out.resultsHead = resultsHead(showAssign, showLt);
       out.resultsTable = st.map(f => [f.id, f.phase, fmt.ml(f.a) + '-' + fmt.ml(f.b)].concat(showUv() ? [fmt.mau(f.uvMean) + ' / ' + fmt.mau(f.uvMax) + (f.uvSat ? ' (sat.)' : '')] : [], [fmt.sig3(f.fMean) + (S.engineer ? ' / ' + fmt.sig3(f.fMax) : '')],showLt ? [ltShares(f.lt)] : [], showAssign ? [f.assign] : [], S.engineer ? [f.linked.filter(UI.cardShown).join(' ')] : []));
-      const named = showLt ? LTM.components(R).filter(c => c.key !== 'sc').map(c => c.m >= 0 ? c.short : 'an unassigned species') : [];
+      const named = showLt ? LTM.components(R).filter(c => c.key !== 'sc').map(c => c.m >= 0 || !S.engineer ? c.short : 'an unassigned species') : [];
       out.results = !S.engineer ? R.id + ': ' + fmt.min1((R.state === 'complete' ? R.endAt : M.runTimeS(R)) / 60) + ' min. Fluorescence is relative (V·ns); no recovery or purity is derived.' +
-        (showLt ? ' Species found by the lifetime analysis' + (lst === 'final' ? '' : ' (not final)') + ': ' + named.join(', ') + '.' + coText(R) + ' Shares are shares of fluorescence, not mass or purity.' : '') :
+        (showLt ? ' Peaks resolved by the lifetime analysis' + (lst === 'final' ? '' : ' (not final)') + ': ' + named.join(', ') + '.' + coText(R) + ' The peaks are not identified (naming them needs a calibration); shares are of fluorescence, not mass or purity.' : '') :
         R.id + ': ' + fmt.int(R.acq.n) + ' blocks over ' + fmt.min1((R.state === 'complete' ? R.endAt : M.runTimeS(R)) / 60) + ' min. Fluorescence is relative (V·ns, ND-corrected); no recovery or purity is derived.' +
         (showLt ? ' Lifetime analysis' + (lst === 'final' ? '' : ' (not final)') + ': ' + R.lt.fit.taus.length + ' components, ' + ltComps(R) + '; reduced χ² ' + R.lt.fit.chi2r.toFixed(2) + '.' + coText(R) + ' Species shares are shares of fluorescence, not mass or purity.' : '') +
         (st.length ? '\n' + out.resultsHead.map(h => h[0] + (h[1] ? ' (' + h[1] + ')' : '')).join('  ') + '\n' + out.resultsTable.map(r => r.join('  ').trimEnd()).join('\n') : '');
@@ -5125,8 +5149,8 @@ const REC = (function () {
   function num(v) { return isFinite(v) ? v.toPrecision(8) : ''; }
   function exportFractions() {
     const R = S.run, st = M.fractionStats(R), comps = R.lt && R.lt.fit ? LTM.components(R) : [];
-    const lines = ['fraction,phase,volume_start_mL,volume_end_mL,collected_start_mL,collected_end_mL,CV_start,CV_end,uv280_mean_mAU,uv280_max_mAU,uv_saturated,fluor_mean_Vns,fluor_max_Vns,processing,sensitivity_changes,waveforms_over_90pct,discarded_blocks,laser_flags,low_precision_share,assignment,share_of_integrated_fluorescence_pct,cards,decision,decision_note' + comps.map(c => ',species_' + (c.m >= 0 ? c.key : 'unassigned_' + (c.k + 1)) + '_pct').join('')];
-    for (const f of st) { const d = S.decisions[f.id] || {}; lines.push([f.id, f.phase, f.a.toFixed(3), f.b.toFixed(3), f.ca.toFixed(3), f.cb.toFixed(3), f.cvA.toFixed(3), f.cvB.toFixed(3), isFinite(f.uvMean) ? f.uvMean.toFixed(1) : '', isFinite(f.uvMax) ? f.uvMax.toFixed(1) : '', f.uvSat, num(f.fMean), num(f.fMax), '"' + M.procLabel() + '"', f.chg, f.over, f.disc, f.laser, f.lowShare.toFixed(3), f.assign, isFinite(f.share) ? (f.share * 100).toFixed(2) : '', '"' + f.linked.join(' ') + '"', '"' + [['pool', 'Pool'], ['sec', 'HPLC-SEC'], ['lun', 'Lunatic'], ['proa', 'Protein A HPLC'], ['none', 'No action']].filter(k => d[k[0]]).map(k => k[1]).join('; ') + '"', '"' + (d.note || '').replace(/"/g, "'") + '"'].concat(comps.map(c => { const q = f.lt && f.lt.comps.find(x => x.k === c.k); return q && isFinite(q.share) ? (q.share * 100).toFixed(2) : ''; })).join(',')); }
+    const lines = ['fraction,phase,volume_start_mL,volume_end_mL,collected_start_mL,collected_end_mL,CV_start,CV_end,uv280_mean_mAU,uv280_max_mAU,uv_saturated,fluor_mean_Vns,fluor_max_Vns,processing,sensitivity_changes,waveforms_over_90pct,discarded_blocks,laser_flags,low_precision_share,assignment,share_of_integrated_fluorescence_pct,cards,decision,decision_note' + comps.filter(c => S.engineer || c.key !== 'sc').map(c => ',' + (S.engineer ? 'species_' + (c.m >= 0 ? c.key : 'unassigned_' + (c.k + 1)) : c.short.toLowerCase().replace(/ /g, '_')) + '_pct').join('')];
+    for (const f of st) { const d = S.decisions[f.id] || {}; lines.push([f.id, f.phase, f.a.toFixed(3), f.b.toFixed(3), f.ca.toFixed(3), f.cb.toFixed(3), f.cvA.toFixed(3), f.cvB.toFixed(3), isFinite(f.uvMean) ? f.uvMean.toFixed(1) : '', isFinite(f.uvMax) ? f.uvMax.toFixed(1) : '', f.uvSat, num(f.fMean), num(f.fMax), '"' + M.procLabel() + '"', f.chg, f.over, f.disc, f.laser, f.lowShare.toFixed(3), f.assign, isFinite(f.share) ? (f.share * 100).toFixed(2) : '', '"' + f.linked.join(' ') + '"', '"' + [['pool', 'Pool'], ['sec', 'HPLC-SEC'], ['lun', 'Lunatic'], ['proa', 'Protein A HPLC'], ['none', 'No action']].filter(k => d[k[0]]).map(k => k[1]).join('; ') + '"', '"' + (d.note || '').replace(/"/g, "'") + '"'].concat(comps.filter(c => S.engineer || c.key !== 'sc').map(c => { const q = f.lt && f.lt.comps.find(x => x.k === c.k); return q && isFinite(q.share) ? (q.share * 100).toFixed(2) : ''; })).join(',')); }
     const name = fileBase() + '_fractions.csv'; saved(name, UI.download(name, lines.join('\n'), 'text/csv'));
   }
   function exportJson() {
@@ -5738,7 +5762,7 @@ const Q = (function () {
       if (R && !R.tpl.breakthroughRule) return A('Rule P2 and hypothesis H1 apply to mAb Protein A templates only. This run uses ' + R.tpl.name + '.', 'Rules P2, H1; method template');
       const p2 = R ? R.rules.cards.filter(c => c.rule === 'P2') : [], h1 = R ? R.rules.cards.find(c => c.rule === 'H1') : null;
       if (p2.length) return A('Possibly, but not confirmed. Rule P2: ' + p2[0].obs + ' H1 is a research hypothesis that mAb breakthrough may be starting. Total fluorescence cannot separate mAb from HCP. Confirm with ' + h1.confirm.replace(/\.$/, '') + '.', 'Cards ' + p2[0].id + ', ' + h1.id);
-      return A('No P2 observation in this run' + (R ? ' so far' : '') + '. P2 watches the fluorescence slope over the last 1 CV after the load plateau (limit 2 % per CV). Total fluorescence cannot separate mAb from HCP; the monomer component of the lifetime analysis can (Proposed). Confirm breakthrough with Protein A HPLC on the flowthrough fractions.', 'Rules P2 and H1');
+      return A('No P2 observation in this run' + (R ? ' so far' : '') + '. P2 watches the fluorescence slope over the last 1 CV after the load plateau (limit 2 % per CV). Total fluorescence cannot separate mAb from HCP; the lifetime analysis separates components by lifetime (Proposed), though naming them needs a calibration. Confirm breakthrough with Protein A HPLC on the flowthrough fractions.', 'Rules P2 and H1');
     }
     if (/trust|reliab|confiden/.test(q) && /peak|elution/.test(q) || /can i trust/.test(q)) {
       if (!R) return A('No run yet. After a run, the answer uses the elution fractions\' QC: range overruns, sensitivity changes, discarded blocks, laser flags and alignment.', 'Fraction table QC');
@@ -6104,7 +6128,7 @@ const Q = (function () {
    ===================================================================== */
 (function () {
   const { $, $$, esc, el, tag } = UI, S = M.S, fmt = M.fmt, C = CH.C;
-  const LTIP = 'Lifetime analysis (Proposed): every block decay is fitted as a non-negative sum of exponentials convolved with the stored IRF. The lifetimes are shared by the whole run and found from the data; the amplitudes are free for every block. No elution profile is assumed and no reference decays are used. Component names come from the method template\'s expected species (assumed).';
+  const LTIP = 'Lifetime analysis (Proposed): every block decay is fitted as a non-negative sum of exponentials convolved with the stored IRF. The lifetimes are shared by the whole run and found from the data; the amplitudes are free for every block. No elution profile is assumed and no reference decays are used. The components are not identified: the main peak gives most of the elution fluorescence and the other peaks are numbered by size. Naming them needs a calibration with reference standards.';
   // display order: the product first, then the other species from the longest expected lifetime down
   function order(lib) { return lib.map((s, m) => m).sort((a, b) => (lib[b].product ? 1 : 0) - (lib[a].product ? 1 : 0) || lib[b].exp - lib[a].exp); }
   const GAP = { vol: 1.0, cv: 0.25, min: 1.0, acq: 1.0 }, MODE = { vol: 1, cv: 2, min: 3, acq: 4 };
@@ -6137,18 +6161,19 @@ const Q = (function () {
   RC.extraSeries.push(() => {
     const R = S.run; if (!R || !R.lt) return [];
     const comps = LTM.components(R), lib = R.lt.lib, out = [];
-    for (const m of order(lib)) {
+    const ms = S.engineer ? order(lib) : comps.filter(c => c.m >= 0).sort((a, b) => a.rank - b.rank).map(c => c.m);
+    for (const m of ms) {
       const c = comps.find(q => q.m === m); if (!c) continue;
       // Scientist view: species names; the lifetimes and the scatter background are Engineer view detail
       const sc = c.key === 'sc';
-      out.push({ key: 'lt_' + c.key, label: c.short + (S.engineer ? ', ' + c.tau.toFixed(2) + ' ns' : ''), tipLabel: c.short, visible: S.engineer || !sc, legend: S.engineer || !sc, tip: c.name + ': decay-associated chromatogram, lifetime ' + c.tau.toFixed(2) + ' ns (template expects about ' + c.exp + ' ns). Mean decay over 15 s. ' + (S.engineer ? 'On the log axis only amplitudes above 2 standard errors are drawn.' : 'Drawn where the species is detected (above 2 standard errors) and flat while only buffer passes.') + ' Proposed.', color: c.color, width: sc ? 1.25 : 2, fill: sc ? 0 : 0.12, panel: 'main', src: src(m), fmt: amt });
+      out.push({ key: 'lt_' + c.key, label: c.short + (S.engineer ? ', ' + c.tau.toFixed(2) + ' ns' : ''), tipLabel: c.short, visible: S.engineer || !sc, legend: S.engineer || !sc, tip: c.name + (S.engineer ? ': decay-associated chromatogram, lifetime ' + c.tau.toFixed(2) + ' ns (template expects about ' + c.exp + ' ns).' : ': one lifetime component, not identified.') + ' Mean decay over 15 s. ' + (S.engineer ? 'On the log axis only amplitudes above 2 standard errors are drawn.' : 'Drawn where the component is detected (above 2 standard errors) and flat while only buffer passes.') + ' Proposed.', color: c.color, width: sc ? 1.25 : 2, fill: sc ? 0 : 0.12, panel: 'main', src: src(m), fmt: amt });
     }
     const other = comps.filter(c => c.m < 0);
-    if (other.length) out.push({ key: 'lt_other', label: S.engineer ? 'Unassigned, ' + other.map(c => c.tau.toFixed(2)).join(', ') + ' ns' : 'Unassigned species', tipLabel: 'Unassigned', tip: 'A component with no expected species of a similar lifetime in the method template. It may be a new species, or may resolve as more of the run is fitted.', color: LTM.COLORS.other, width: 1.75, fill: 0.08, panel: 'main', src: src(-1), fmt: amt });
+    if (other.length) out.push({ key: 'lt_other', label: S.engineer ? 'Unassigned, ' + other.map(c => c.tau.toFixed(2)).join(', ') + ' ns' : other.map(c => c.short).join(', '), tipLabel: S.engineer ? 'Unassigned' : other.map(c => c.short).join(', '), tip: S.engineer ? 'A component with no expected species of a similar lifetime in the method template. It may be a new species, or may resolve as more of the run is fitted.' : 'One lifetime component, not identified.', color: LTM.COLORS.other, width: 1.75, fill: 0.08, panel: 'main', src: src(-1), fmt: amt });
     return out;
   });
   // caption under the legend: where the species come from, and whether the analysis is still running
-  RC.caption = () => { const st = LTM.state(S.run); if (st === 'none') return ''; const word = { waiting: 'waiting for signal', fitting: 'first fit running', live: 'updating', finalising: 'final fit running', final: 'final' }[st]; return (S.engineer ? 'Species: lifetime analysis, ' + word : 'Species by lifetime analysis' + (st === 'final' ? '' : ', ' + word)) + ' (Proposed)'; };
+  RC.caption = () => { const st = LTM.state(S.run); if (st === 'none') return ''; const word = { waiting: 'waiting for signal', fitting: 'first fit running', live: 'updating', finalising: 'final fit running', final: 'final' }[st]; return (S.engineer ? 'Species: lifetime analysis, ' + word : 'Peaks by lifetime analysis' + (st === 'final' ? '' : ', ' + word)) + ' (Proposed)'; };
   RC.extraInfo.push((r, i) => { const a = LTM.ampsAt(r, i); if (!a) return ''; if (background(a.comps)) return ' · Buffer only'; const cs = shown(a.comps), t = cs.reduce((s, c) => s + Math.max(0, c.a), 0); const top = cs.map(c => ({ c, f: t > 0 ? Math.max(0, c.a) / t : 0 })).filter(x => x.f >= 0.01).sort((x, y) => y.f - x.f).slice(0, 3); return top.length ? ' · ' + top.map(x => x.c.short + ' ' + fmt.pct0(x.f) + ' %').join(', ') : ''; });
   // tooltip footer on the Run chart: buffer, or the species co-eluting at the cursor
   RC.tipExtra = i => { const R = S.run; if (!R || !R.lt || !R.lt.fit || i == null || i >= R.lt.n) return ''; if (R.lt.buf[i]) return 'Buffer only'; const c = coAt(R, i); return c ? 'Co-eluting: ' + c.label : ''; };
@@ -6204,12 +6229,12 @@ const Q = (function () {
     // one numeric column per species, keyed by the colour of its trace: a species can be read down the fractions
     fr.addCol({ k: 'lt', multi: () => {
       const R = S.run; if (!R || !R.lt || !R.lt.fit) return [];
-      const comps = LTM.components(R), list = order(R.lt.lib).map(m => comps.find(c => c.m === m)).filter(Boolean).concat(comps.filter(c => c.m < 0)).filter(c => S.engineer || c.key !== 'sc');
-      return list.map(c => ({ k: 'lt_' + c.k, num: true, h: '<span class="ch-sw" style="border-top-color:' + c.color + '"></span>' + esc(c.m >= 0 ? c.short : 'Unassigned') + ' <span class="unit">(%)</span>',
-        tip: (c.m >= 0 ? c.name : 'Unassigned species') + ': share of the fraction\'s fluorescence, from the mean decay of its blocks. Relative signal only: not mass, purity, yield or recovery. Proposed.',
+      const comps = LTM.components(R), list = S.engineer ? order(R.lt.lib).map(m => comps.find(c => c.m === m)).filter(Boolean).concat(comps.filter(c => c.m < 0)) : comps.filter(c => c.key !== 'sc').sort((a, b) => a.rank - b.rank);
+      return list.map(c => ({ k: 'lt_' + c.k, num: true, h: '<span class="ch-sw" style="border-top-color:' + c.color + '"></span>' + esc(c.m >= 0 || !S.engineer ? c.short : 'Unassigned') + ' <span class="unit">(%)</span>',
+        tip: (c.m >= 0 || !S.engineer ? c.name : 'Unassigned species') + ': share of the fraction\'s fluorescence, from the mean decay of its blocks. Relative signal only: not mass, purity, yield or recovery. Proposed.',
         v: f => { const x = shareOf(f, c.k); return x === x ? x : -1; }, f: f => { const x = shareOf(f, c.k); return x === x && x >= 0.005 ? pct(x) : '<span class="muted">–</span>'; } }));
     } }, 'qc');
-    fr.addCol({ k: 'sug', get h() { return 'Suggested' + (S.engineer ? ' ' + tag('P', 'always') : ''); }, get tip() { return 'A next step from the species shares (Proposed' + UI.engRef('; provisional limits in Engineer view → Rules') + '): Pool, HPLC-SEC to confirm the pool edge, leave out, or Protein A HPLC on the flow-through. Shares are fluorescence, not mass, so confirm before pooling.'; }, show: () => !!(S.run && S.run.lt && S.run.lt.fit), v: f => { const g = suggest(f); return g ? ['pool', 'sec', 'proa', 'none', 'buffer'].indexOf(g.k) : 9; }, f: f => { const g = suggest(f); return g && g.k !== 'buffer' ? '<span class="sug sug-' + g.k + '" title="' + esc(g.why) + '">' + esc(g.label) + '</span>' : ''; } }, 'cards');
+    fr.addCol({ k: 'sug', get h() { return 'Suggested' + (S.engineer ? ' ' + tag('P', 'always') : ''); }, get tip() { return 'A next step from the peak shares (Proposed' + UI.engRef('; provisional limits in Engineer view → Rules') + '): Pool, HPLC-SEC to confirm the pool edge, leave out, or Protein A HPLC on the flow-through. Shares are fluorescence, not mass, so confirm before pooling.'; }, show: () => !!(S.run && S.run.lt && S.run.lt.fit), v: f => { const g = suggest(f); return g ? ['pool', 'sec', 'proa', 'none', 'buffer'].indexOf(g.k) : 9; }, f: f => { const g = suggest(f); return g && g.k !== 'buffer' ? '<span class="sug sug-' + g.k + '" title="' + esc(g.why) + '">' + esc(g.label) + '</span>' : ''; } }, 'cards');
   }
 
   /* ---------- Engineer view: Lifetimes ---------- */
@@ -6266,18 +6291,18 @@ const Q = (function () {
   Q.addIntent((q, ctx) => {
     if (!/species|co-?elut|lifetime|decay map|\bcomponents?\b|aggregat|\bhmw\b|composition|deconvol|amplitude/.test(q)) return null;
     const R = ctx.run, src = 'Lifetime analysis (Proposed); Engineer view: Lifetimes';
-    if (!R || !R.lt) return { text: 'Start a run. The lifetime analysis fits every block\'s fluorescence decay and separates species that elute together, without assuming a peak shape or using reference decays.', source: src };
+    if (!R || !R.lt) return { text: 'Start a run. The lifetime analysis fits every block\'s fluorescence decay and separates components that elute together, without assuming a peak shape or using reference decays.', source: src };
     if (!R.lt.fit) return { text: 'The lifetime analysis has not fitted yet. The first global fit runs after 150 blocks; until then only total fluorescence is shown.', source: src };
     const comps = LTM.components(R), el = (R.tpl.fractions.elPhase || 'el'), st = M.fractionStats(R).filter(f => f.phaseKey === el && f.lt && f.complete && (f.lt.comps.find(c => c.product) || { share: 0 }).share >= 0.5);
     const prod = comps.find(c => c.product), imp = comps.filter(c => !c.product && c.key !== 'sc').map(c => ({ c, sh: st.map(f => ({ id: f.id, v: (f.lt.comps.find(x => x.k === c.k) || {}).share })).filter(x => isFinite(x.v)) })).filter(x => x.sh.length).sort((a, b) => Math.max(...b.sh.map(x => x.v)) - Math.max(...a.sh.map(x => x.v)))[0];
     let tail = '';
-    if (imp && prod) { const lo = imp.sh.reduce((a, b) => b.v < a.v ? b : a), hi = imp.sh.reduce((a, b) => b.v > a.v ? b : a); tail = ' In the elution fractions where the product gives at least half the fluorescence, ' + imp.c.short + ' goes from ' + (lo.v * 100).toFixed(1) + ' % (' + lo.id + ') to ' + (hi.v * 100).toFixed(1) + ' % (' + hi.id + ') of fluorescence.'; }
+    if (imp && prod) { const lo = imp.sh.reduce((a, b) => b.v < a.v ? b : a), hi = imp.sh.reduce((a, b) => b.v > a.v ? b : a); tail = ' In the elution fractions where ' + (S.engineer ? 'the product' : 'the main peak') + ' gives at least half the fluorescence, ' + imp.c.short + ' goes from ' + (lo.v * 100).toFixed(1) + ' % (' + lo.id + ') to ' + (hi.v * 100).toFixed(1) + ' % (' + hi.id + ') of fluorescence.'; }
     const xm = R.x.min, co = LTM.features(R).coel.map(c => c.label + ' from ' + fmt.min1(xm[c.i0]) + ' to ' + fmt.min1(xm[c.i1 - 1]) + ' min (' + c.minorShort + ' ' + pct(c.lo) + ' to ' + pct(c.hi) + ' %)');
-    return { text: 'The lifetime analysis ' + (LTM.state(R) === 'final' ? '' : '(still updating) ') + 'fits every block\'s decay with lifetimes shared by the whole run and finds ' + comps.length + ' components: ' + comps.map(c => c.tau.toFixed(2) + ' ns (' + (c.m >= 0 ? c.name : 'unassigned') + ')').join(', ') + '. Each component\'s amplitude against time is drawn on the Run chart; the Decay panel shows the fit at any time.' + (co.length ? ' Co-eluting: ' + co.join('; ') + '.' : '') + tail + ' Shares are fluorescence, not mass or purity; names come from the template (assumed).' + (R.spKey === 'aav' ? ' Confirm capsid content offline.' : ' Confirm aggregates with HPLC-SEC.'), source: src };
+    return { text: 'The lifetime analysis ' + (LTM.state(R) === 'final' ? '' : '(still updating) ') + 'fits every block\'s decay with lifetimes shared by the whole run and finds ' + comps.length + ' components: ' + comps.map(c => c.tau.toFixed(2) + ' ns (' + (c.m >= 0 ? c.name : 'unassigned') + ')').join(', ') + '. Each component\'s amplitude against time is drawn on the Run chart; the Decay panel shows the fit at any time.' + (co.length ? ' Co-eluting: ' + co.join('; ') + '.' : '') + tail + (S.engineer ? ' Shares are fluorescence, not mass or purity; names come from the template (assumed).' + (R.spKey === 'aav' ? ' Confirm capsid content offline.' : ' Confirm aggregates with HPLC-SEC.') : ' Shares are fluorescence, not mass or purity. The peaks are not identified: naming them needs a calibration, and offline analysis such as HPLC-SEC confirms what they are.'), source: src };
   });
   window.Q_EXTRA_CHIPS = window.Q_EXTRA_CHIPS || {};
-  window.Q_EXTRA_CHIPS.run = (window.Q_EXTRA_CHIPS.run || []).concat(['Which species are co-eluting?']);
-  window.Q_EXTRA_CHIPS.fractions = ['Which fractions should I pool?', 'Which species are co-eluting?'].concat(window.Q_EXTRA_CHIPS.fractions || []);
+  window.Q_EXTRA_CHIPS.run = (window.Q_EXTRA_CHIPS.run || []).concat(['Which peaks are co-eluting?']);
+  window.Q_EXTRA_CHIPS.fractions = ['Which fractions should I pool?', 'Which peaks are co-eluting?'].concat(window.Q_EXTRA_CHIPS.fractions || []);
 
   /* ---------- wiring ---------- */
   // refresh the Lifetimes tab after a refit; other Engineer tabs are left alone (they may hold an input being edited)
